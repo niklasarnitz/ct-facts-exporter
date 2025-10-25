@@ -1,0 +1,21 @@
+{
+  "name": "ct-facts-exporter",
+  "version": "1.0.0",
+  "description": "Grafana JSON datasource provider for ChurchTools facts",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@churchtools/churchtools-client": "^1.4.0",
+    "better-sqlite3": "^12.4.1",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.3",
+    "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
+    "@types/node-cron": "^3.0.11"
+  }
+}

@@ -1,0 +1,18 @@
+# deps
+node_modules/
+
+# environment
+.env
+
+# database
+data.db
+
+# logs
+*.log
+
+# OS
+.DS_Store
+
+# build
+dist
+build
