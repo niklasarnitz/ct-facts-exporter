@@ -1,4 +1,10 @@
 import { churchtoolsClient } from "@churchtools/churchtools-client";
+import * as axiosCookieJarSupport from "axios-cookiejar-support";
+import { CookieJar } from "tough-cookie";
+
+// Set up cookie jar for Node.js session handling
+const cookieJar = new CookieJar();
+churchtoolsClient.setCookieJar(axiosCookieJarSupport.wrapper, cookieJar);
 
 export interface CTFact {
   id: number;
@@ -69,7 +75,10 @@ export const ctClient = {
     }
   },
 
-  async getEvents(year?: number): Promise<CTEvent[]> {
+  async getEvents(
+    yearOrFrom?: number | string,
+    to?: string
+  ): Promise<CTEvent[]> {
     if (!isAuthenticated) {
       throw new Error("Not authenticated");
     }
@@ -77,9 +86,14 @@ export const ctClient = {
     try {
       const params = new URLSearchParams();
 
-      if (year) {
-        params.append("from", `${year}-01-01`);
-        params.append("to", `${year}-12-31`);
+      if (typeof yearOrFrom === "number") {
+        // Year provided
+        params.append("from", `${yearOrFrom}-01-01`);
+        params.append("to", `${yearOrFrom}-12-31`);
+      } else if (typeof yearOrFrom === "string" && to) {
+        // Date range provided
+        params.append("from", yearOrFrom);
+        params.append("to", to);
       }
 
       const url = `/events${params.toString() ? `?${params.toString()}` : ""}`;
@@ -117,6 +131,68 @@ export const ctClient = {
     allFacts: CTEventFact[];
   }> {
     const events = await this.getEvents(year);
+
+    // Fetch facts for all events in parallel (in batches to avoid rate limiting)
+    const batchSize = 10;
+    const allFacts: CTEventFact[] = [];
+
+    for (let i = 0; i < events.length; i += batchSize) {
+      const batch = events.slice(i, i + batchSize);
+      const factPromises = batch.map((event) =>
+        event.id ? this.getEventFacts(event.id) : Promise.resolve([])
+      );
+
+      const eventFactsArrays = await Promise.all(factPromises);
+      allFacts.push(...eventFactsArrays.flat());
+    }
+
+    return { events, allFacts };
+  },
+
+  async getAllFactsForYearWithDelay(
+    year: number,
+    delayMs: number = 10
+  ): Promise<{
+    events: CTEvent[];
+    allFacts: CTEventFact[];
+  }> {
+    const events = await this.getEvents(year);
+    const allFacts: CTEventFact[] = [];
+
+    console.log(
+      `Fetching facts for ${events.length} events with ${delayMs}ms delay...`
+    );
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      if (event.id) {
+        const facts = await this.getEventFacts(event.id);
+        allFacts.push(...facts);
+
+        // Add delay between requests to avoid rate limiting
+        if (i < events.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        // Log progress every 10 events
+        if ((i + 1) % 10 === 0) {
+          console.log(`  Processed ${i + 1}/${events.length} events...`);
+        }
+      }
+    }
+
+    console.log(`Completed fetching facts for ${events.length} events`);
+    return { events, allFacts };
+  },
+
+  async getAllFactsForDateRange(
+    from: string,
+    to: string
+  ): Promise<{
+    events: CTEvent[];
+    allFacts: CTEventFact[];
+  }> {
+    const events = await this.getEvents(from, to);
 
     // Fetch facts for all events in parallel (in batches to avoid rate limiting)
     const batchSize = 10;

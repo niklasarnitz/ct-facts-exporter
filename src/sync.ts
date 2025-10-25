@@ -23,7 +23,7 @@ export class DataSyncService {
       if (masterData.facts) {
         console.log(`Syncing ${masterData.facts.length} facts...`);
         for (const fact of masterData.facts) {
-          database.insertFact({
+          database.upsertFact({
             id: fact.id,
             name: fact.name,
             name_translated: fact.nameTranslated,
@@ -34,47 +34,125 @@ export class DataSyncService {
         }
       }
 
-      // Fetch events and facts for current and previous year
-      const currentYear = new Date().getFullYear();
-      const years = [currentYear, currentYear - 1];
+      // Fetch events and facts for current and previous month
+      const now = new Date();
+      const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-      for (const year of years) {
-        console.log(`Fetching events and facts for year ${year}...`);
-        const { events, allFacts } = await ctClient.getAllFactsForYear(year);
+      const from = previousMonth.toISOString().split("T")[0];
+      const to = nextMonth.toISOString().split("T")[0];
 
-        // Create a map of events by ID for quick lookup
-        const eventsMap = new Map(events.map((e) => [e.id, e]));
+      console.log(`Fetching events and facts from ${from} to ${to}...`);
+      const { events, allFacts } = await ctClient.getAllFactsForDateRange(
+        from,
+        to
+      );
 
-        console.log(`Syncing ${events.length} events for ${year}...`);
-        for (const event of events) {
-          if (event.id) {
-            database.insertEvent({
-              id: event.id,
-              name: event.name,
-              start_date: event.startDate,
-              end_date: event.endDate,
-              calendar_id: event.calendarId,
-            });
-          }
-        }
+      // Create a map of events by ID for quick lookup
+      const eventsMap = new Map(events.map((e) => [e.id, e]));
 
-        console.log(`Syncing ${allFacts.length} event facts for ${year}...`);
-        for (const fact of allFacts) {
-          const event = eventsMap.get(fact.eventId);
-          database.insertEventFact({
-            event_id: fact.eventId,
-            fact_id: fact.factId,
-            value: fact.value,
-            modified_date: fact.modifiedDate,
-            event_name: event?.name,
+      console.log(`Syncing ${events.length} events...`);
+      for (const event of events) {
+        if (event.id) {
+          database.insertEvent({
+            id: event.id,
+            name: event.name,
+            start_date: event.startDate,
+            end_date: event.endDate,
+            calendar_id: event.calendarId,
           });
         }
+      }
+
+      console.log(`Syncing ${allFacts.length} event facts...`);
+      for (const fact of allFacts) {
+        const event = eventsMap.get(fact.eventId);
+        database.insertEventFact({
+          event_id: fact.eventId,
+          fact_id: fact.factId,
+          value: fact.value,
+          modified_date: fact.modifiedDate,
+          event_name: event?.name,
+        });
       }
 
       const lastSync = database.getLastSyncTime();
       console.log(`Data sync completed successfully at ${lastSync}`);
     } catch (error) {
       console.error("Error during data sync:", error);
+      throw error;
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  async syncYear(year: number) {
+    if (this.isSyncing) {
+      throw new Error("Sync already in progress");
+    }
+
+    this.isSyncing = true;
+    console.log(`Starting full year sync for ${year}...`);
+
+    try {
+      // Fetch master data first
+      console.log("Fetching master data...");
+      const masterData = await ctClient.getMasterData();
+
+      if (masterData.facts) {
+        console.log(`Syncing ${masterData.facts.length} facts...`);
+        for (const fact of masterData.facts) {
+          database.upsertFact({
+            id: fact.id,
+            name: fact.name,
+            name_translated: fact.nameTranslated,
+            type: fact.type,
+            unit: fact.unit,
+            sort_key: fact.sortKey,
+          });
+        }
+      }
+
+      console.log(`Fetching events and facts for year ${year}...`);
+      const { events, allFacts } = await ctClient.getAllFactsForYearWithDelay(
+        year,
+        10
+      );
+
+      // Create a map of events by ID for quick lookup
+      const eventsMap = new Map(events.map((e) => [e.id, e]));
+
+      console.log(`Syncing ${events.length} events for ${year}...`);
+      for (const event of events) {
+        if (event.id) {
+          database.insertEvent({
+            id: event.id,
+            name: event.name,
+            start_date: event.startDate,
+            end_date: event.endDate,
+            calendar_id: event.calendarId,
+          });
+        }
+      }
+
+      console.log(`Syncing ${allFacts.length} event facts for ${year}...`);
+      for (const fact of allFacts) {
+        const event = eventsMap.get(fact.eventId);
+        database.insertEventFact({
+          event_id: fact.eventId,
+          fact_id: fact.factId,
+          value: fact.value,
+          modified_date: fact.modifiedDate,
+          event_name: event?.name,
+        });
+      }
+
+      const lastSync = database.getLastSyncTime();
+      console.log(`Year ${year} sync completed successfully at ${lastSync}`);
+      return { events: events.length, facts: allFacts.length };
+    } catch (error) {
+      console.error(`Error during year ${year} sync:`, error);
       throw error;
     } finally {
       this.isSyncing = false;

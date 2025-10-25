@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import path from "path";
 
 const db = new Database(path.join(process.cwd(), "data.db"));
@@ -46,9 +46,17 @@ db.exec(`
 
 // Prepared statements
 const stmts = {
+  getFact: db.prepare(`
+    SELECT * FROM facts WHERE id = ?
+  `),
+
   insertFact: db.prepare(`
     INSERT OR REPLACE INTO facts (id, name, name_translated, type, unit, sort_key)
     VALUES (?, ?, ?, ?, ?, ?)
+  `),
+
+  updateFactName: db.prepare(`
+    UPDATE facts SET name = ?, name_translated = ? WHERE id = ?
   `),
 
   insertEvent: db.prepare(`
@@ -150,6 +158,36 @@ export interface EventFact {
 }
 
 export const database = {
+  upsertFact(fact: Fact) {
+    // Check if fact exists
+    const existing = stmts.getFact.get(fact.id) as Fact | undefined;
+
+    if (existing) {
+      // Fact exists, check if name changed
+      if (
+        existing.name !== fact.name ||
+        existing.name_translated !== fact.name_translated
+      ) {
+        console.log(
+          `Updating fact ${fact.id}: "${existing.name_translated}" -> "${fact.name_translated}"`
+        );
+        stmts.updateFactName.run(fact.name, fact.name_translated, fact.id);
+      }
+      // Note: We don't update other fields like type, unit, sort_key as they are structural
+    } else {
+      // Fact doesn't exist, insert it
+      console.log(`Inserting new fact ${fact.id}: "${fact.name_translated}"`);
+      stmts.insertFact.run(
+        fact.id,
+        fact.name,
+        fact.name_translated,
+        fact.type,
+        fact.unit || null,
+        fact.sort_key
+      );
+    }
+  },
+
   insertFact(fact: Fact) {
     stmts.insertFact.run(
       fact.id,
@@ -179,12 +217,18 @@ export const database = {
     event_name?: string;
   }) {
     const isNumeric = typeof eventFact.value === "number";
+    const numericValue = isNumeric ? (eventFact.value as number) : null;
+    const textValue =
+      !isNumeric && eventFact.value !== undefined
+        ? String(eventFact.value)
+        : null;
+
     stmts.insertEventFact.run(
       eventFact.event_id,
       eventFact.fact_id,
       eventFact.event_name || null,
-      isNumeric ? eventFact.value : null,
-      !isNumeric ? String(eventFact.value) : null,
+      numericValue,
+      textValue,
       eventFact.modified_date || null
     );
   },

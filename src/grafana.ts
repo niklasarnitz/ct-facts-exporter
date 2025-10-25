@@ -23,6 +23,7 @@ export interface GrafanaQueryRequest {
 export interface GrafanaDataPoint {
   target: string;
   datapoints: Array<[number, number]>; // [value, timestamp_ms]
+  unit?: string;
 }
 
 export interface GrafanaMetricOption {
@@ -150,6 +151,7 @@ export const grafanaHandlers = {
 
         let datapoints: Array<[number, number]> = [];
         let targetName = `Fact ${factId}`;
+        let unit: string | undefined = undefined;
 
         if (aggregation === "raw") {
           const eventFacts =
@@ -172,7 +174,7 @@ export const grafanaHandlers = {
 
           if (datapoints.length > 0) {
             const factName = eventFacts[0]?.fact_name || `Fact ${factId}`;
-            const unit = eventFacts[0]?.unit;
+            unit = eventFacts[0]?.unit;
             targetName = unit ? `${factName} (${unit})` : factName;
             if (eventNames && eventNames.length > 0) {
               targetName += ` [${eventNames.join(", ")}]`;
@@ -196,6 +198,7 @@ export const grafanaHandlers = {
           const facts = database.getNumericFacts();
           const fact = facts.find((f) => f.id === factId);
           if (fact) {
+            unit = fact.unit;
             targetName = `${fact.name_translated} - Monthly Sum`;
             if (fact.unit) targetName += ` (${fact.unit})`;
             if (eventNames && eventNames.length > 0) {
@@ -223,6 +226,7 @@ export const grafanaHandlers = {
           const facts = database.getNumericFacts();
           const fact = facts.find((f) => f.id === factId);
           if (fact) {
+            unit = fact.unit;
             targetName = `${fact.name_translated} - Yearly Sum`;
             if (fact.unit) targetName += ` (${fact.unit})`;
             if (eventNames && eventNames.length > 0) {
@@ -250,6 +254,7 @@ export const grafanaHandlers = {
           const facts = database.getNumericFacts();
           const fact = facts.find((f) => f.id === factId);
           if (fact) {
+            unit = fact.unit;
             targetName = `${fact.name_translated} - Yearly Mean`;
             if (fact.unit) targetName += ` (${fact.unit})`;
             if (eventNames && eventNames.length > 0) {
@@ -259,10 +264,14 @@ export const grafanaHandlers = {
         }
 
         if (datapoints.length > 0) {
-          results.push({
+          const result: GrafanaDataPoint = {
             target: targetName,
             datapoints,
-          });
+          };
+          if (unit) {
+            result.unit = unit;
+          }
+          results.push(result);
         }
       }
 

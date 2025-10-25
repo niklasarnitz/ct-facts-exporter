@@ -38,6 +38,41 @@ app.post("/sync", async (c) => {
   }
 });
 
+// Sync full year endpoint with rate limiting
+app.post("/sync-year/:year", async (c) => {
+  try {
+    const year = parseInt(c.req.param("year"));
+
+    if (isNaN(year) || year < 2000 || year > new Date().getFullYear() + 1) {
+      return c.json(
+        {
+          status: "error",
+          message: "Invalid year parameter",
+        },
+        400
+      );
+    }
+
+    console.log(`API request to sync year ${year}`);
+    const result = await dataSyncService.syncYear(year);
+
+    return c.json({
+      status: "success",
+      message: `Sync completed for year ${year}`,
+      events: result.events,
+      facts: result.facts,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        status: "error",
+        message: String(error),
+      },
+      500
+    );
+  }
+});
+
 // Initialize the application
 async function initialize() {
   const { CT_BASE_URL, CT_USERNAME, CT_PASSWORD, PORT = "3000" } = process.env;
