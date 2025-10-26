@@ -4,6 +4,7 @@
   "description": "Grafana JSON datasource provider for ChurchTools facts",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun run src/index.ts",
     "test-api": "bun run src/test-api.ts"
   },
