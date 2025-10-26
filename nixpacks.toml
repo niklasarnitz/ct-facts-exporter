@@ -9,19 +9,11 @@ cmd = "bun install"
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
-NODE_VERSION = "20"
-
-[phases.install]
-dependsOn = []
-cmds = [
-    "curl -fsSL https://bun.sh/install | bash",
-    "export PATH=\"$HOME/.bun/bin:$PATH\"",
-    "bun install",
-]
-
-[phases.build]
-dependsOn = ["install"]
-cmds = []
 
 [setup]
 providers = ["bun"]
+
+# Add unzip as a system dependency for bun installation
+[phases.setup]
+dependsOn = []
+aptPkgs = ["unzip"]
