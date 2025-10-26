@@ -23,7 +23,7 @@ app.get("/health", (c) => {
   const lastSync = database.getLastSyncTime();
   return c.json({
     status: "ok",
-    authenticated: ctClient.isAuthenticated(),
+    authenticated: ctClient.isAuth(),
     lastSync: lastSync?.toISOString() || null,
   });
 });
@@ -75,23 +75,31 @@ app.post("/sync-year/:year", async (c) => {
 
 // Initialize the application
 async function initialize() {
-  const { CT_BASE_URL, CT_USERNAME, CT_PASSWORD, PORT = "3000" } = process.env;
+  const { CT_BASE_URL, CT_LOGIN_TOKEN, PORT = "3000" } = process.env;
 
-  if (!CT_BASE_URL || !CT_USERNAME || !CT_PASSWORD) {
+  if (!CT_BASE_URL || !CT_LOGIN_TOKEN) {
     throw new Error(
-      "Missing required environment variables: CT_BASE_URL, CT_USERNAME, CT_PASSWORD"
+      "Missing required environment variables: CT_BASE_URL, CT_LOGIN_TOKEN"
     );
   }
 
   try {
     console.log("Authenticating with ChurchTools...");
-    await ctClient.authenticate(CT_BASE_URL, CT_USERNAME, CT_PASSWORD);
+    await ctClient.authenticate(CT_BASE_URL, CT_LOGIN_TOKEN);
 
     console.log("Starting initial data sync...");
     await dataSyncService.performInitialSync();
 
     console.log("Starting cron job for hourly sync...");
     dataSyncService.startCronJob();
+
+    // Start the server
+    console.log(`Starting server on port ${PORT}...`);
+
+    const server = Bun.serve({
+      port: parseInt(PORT),
+      fetch: app.fetch,
+    });
 
     console.log(`Server is running on port ${PORT}`);
     console.log(`Grafana JSON datasource URL: http://localhost:${PORT}`);

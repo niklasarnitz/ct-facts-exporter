@@ -8,16 +8,12 @@
     "test-api": "bun run src/test-api.ts"
   },
   "dependencies": {
-    "@churchtools/churchtools-client": "^1.4.0",
-    "axios-cookiejar-support": "^6.0.4",
     "dotenv": "^17.2.3",
     "hono": "^4.10.3",
-    "node-cron": "^4.2.1",
-    "tough-cookie": "^6.0.0"
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node-cron": "^3.0.11",
-    "@types/tough-cookie": "^4.0.5"
+    "@types/node-cron": "^3.0.11"
   }
 }

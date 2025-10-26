@@ -1,10 +1,4 @@
-import { churchtoolsClient } from "@churchtools/churchtools-client";
-import * as axiosCookieJarSupport from "axios-cookiejar-support";
-import { CookieJar } from "tough-cookie";
-
-// Set up cookie jar for Node.js session handling
-const cookieJar = new CookieJar();
-churchtoolsClient.setCookieJar(axiosCookieJarSupport.wrapper, cookieJar);
+import axios, { AxiosInstance } from "axios";
 
 export interface CTFact {
   id: number;
@@ -34,52 +28,72 @@ export interface CTMasterData {
   facts?: CTFact[];
 }
 
-let isAuthenticated = false;
+class ChurchToolsClient {
+  private axiosInstance: AxiosInstance;
+  private isAuthenticated = false;
 
-export const ctClient = {
-  async authenticate(baseUrl: string, username: string, password: string) {
-    churchtoolsClient.setBaseUrl(baseUrl);
+  constructor() {
+    this.axiosInstance = axios.create({
+      timeout: 30000,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async authenticate(baseUrl: string, loginToken: string): Promise<void> {
+    this.axiosInstance.defaults.baseURL = `${baseUrl.replace(/\/$/, "")}/api`;
+    this.axiosInstance.defaults.headers.common[
+      "Authorization"
+    ] = `Login ${loginToken}`;
 
     try {
-      await churchtoolsClient.post("/login", { username, password });
+      // Test authentication by calling whoami
+      const response = await this.axiosInstance.get("/whoami");
 
-      // Verify authentication
-      await churchtoolsClient.get("/whoami");
-
-      isAuthenticated = true;
-      console.log("Successfully authenticated with ChurchTools");
+      if (response.data && response.data.data && response.data.data.id) {
+        this.isAuthenticated = true;
+        console.log(
+          "Successfully authenticated with ChurchTools using login token"
+        );
+        console.log(
+          "User:",
+          response.data.data.firstName,
+          response.data.data.lastName
+        );
+      } else {
+        throw new Error("Invalid authentication response");
+      }
     } catch (error) {
-      isAuthenticated = false;
+      this.isAuthenticated = false;
+      console.error("Authentication failed:", error);
       throw new Error(`Authentication failed: ${error}`);
     }
-  },
+  }
 
-  isAuthenticated() {
-    return isAuthenticated;
-  },
+  isAuth(): boolean {
+    return this.isAuthenticated;
+  }
 
   async getMasterData(): Promise<CTMasterData> {
-    if (!isAuthenticated) {
+    if (!this.isAuthenticated) {
       throw new Error("Not authenticated");
     }
 
     try {
-      const response = await churchtoolsClient.get<{ data: CTMasterData }>(
-        "/event/masterdata"
-      );
-      const data = this.unwrap(response) as CTMasterData;
-      return data || { facts: [] };
+      const response = await this.axiosInstance.get("/event/masterdata");
+      return response.data.data || { facts: [] };
     } catch (error) {
       console.error("Error fetching master data:", error);
       throw error;
     }
-  },
+  }
 
   async getEvents(
     yearOrFrom?: number | string,
     to?: string
   ): Promise<CTEvent[]> {
-    if (!isAuthenticated) {
+    if (!this.isAuthenticated) {
       throw new Error("Not authenticated");
     }
 
@@ -97,34 +111,33 @@ export const ctClient = {
       }
 
       const url = `/events${params.toString() ? `?${params.toString()}` : ""}`;
-      const response = await churchtoolsClient.get<
-        { data: CTEvent[] } | CTEvent[]
-      >(url);
-      const data = this.unwrap(response) as CTEvent[];
-      return data || [];
+      const response = await this.axiosInstance.get(url);
+
+      // Handle both wrapped and unwrapped responses
+      if (response.data.data) {
+        return response.data.data;
+      }
+      return response.data || [];
     } catch (error) {
       console.error("Error fetching events:", error);
       throw error;
     }
-  },
+  }
 
   async getEventFacts(eventId: number): Promise<CTEventFact[]> {
-    if (!isAuthenticated) {
+    if (!this.isAuthenticated) {
       throw new Error("Not authenticated");
     }
 
     try {
-      const response = await churchtoolsClient.get<{ data: CTEventFact[] }>(
-        `/events/${eventId}/facts`
-      );
-      const data = this.unwrap(response) as CTEventFact[];
-      return data || [];
+      const response = await this.axiosInstance.get(`/events/${eventId}/facts`);
+      return response.data.data || [];
     } catch (error) {
       console.error(`Error fetching facts for event ${eventId}:`, error);
       // Return empty array instead of throwing to continue with other events
       return [];
     }
-  },
+  }
 
   async getAllFactsForYear(year: number): Promise<{
     events: CTEvent[];
@@ -147,7 +160,7 @@ export const ctClient = {
     }
 
     return { events, allFacts };
-  },
+  }
 
   async getAllFactsForYearWithDelay(
     year: number,
@@ -183,7 +196,7 @@ export const ctClient = {
 
     console.log(`Completed fetching facts for ${events.length} events`);
     return { events, allFacts };
-  },
+  }
 
   async getAllFactsForDateRange(
     from: string,
@@ -209,17 +222,8 @@ export const ctClient = {
     }
 
     return { events, allFacts };
-  },
+  }
+}
 
-  unwrap(res: any): any {
-    if (res == null) return null;
-    try {
-      if (typeof res === "object" && res !== null && "data" in res) {
-        return res.data;
-      }
-    } catch (e) {
-      // ignore
-    }
-    return res;
-  },
-};
+// Export a singleton instance
+export const ctClient = new ChurchToolsClient();
