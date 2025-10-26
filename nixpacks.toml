@@ -9,6 +9,7 @@ cmd = "bun install"
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
+NODE_VERSION = "20"
 
 [phases.install]
 dependsOn = []
