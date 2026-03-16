@@ -13,6 +13,7 @@ const app = new Hono();
 // Grafana JSON datasource endpoints
 app.get("/", grafanaHandlers.root);
 app.post("/metrics", grafanaHandlers.metrics);
+app.post("/variable", grafanaHandlers.variable);
 app.post("/query", grafanaHandlers.query);
 app.post("/annotations", grafanaHandlers.annotations);
 app.post("/tag-keys", grafanaHandlers.tagKeys);

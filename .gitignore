@@ -16,3 +16,4 @@ data.db
 # build
 dist
 build
+openapi.yaml

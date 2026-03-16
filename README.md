@@ -61,6 +61,7 @@ bun run dev
 
 - `GET /health` - Health check and authentication status
 - `POST /metrics` - Grafana datasource metrics discovery
+- `POST /variable` - Grafana query variable options (`metrics_*`, `event_names`)
 - `POST /query` - Grafana datasource query endpoint
 - `POST /sync` - Manual data synchronization trigger
 - `POST /sync-year/:year` - Sync specific year data
@@ -71,6 +72,15 @@ Add as a JSON datasource in Grafana:
 
 - URL: `http://your-server:3000`
 - Method: Server (default)
+
+### Import Ready-Made Dashboard
+
+1. Open Grafana and go to **Dashboards → Import**.
+2. Upload `grafana/ct-facts-dashboard.json`.
+3. When prompted for datasource, select your `ct-facts` datasource.
+4. Pick metrics from the dashboard dropdowns (`Raw`, `Monthly`, `Yearly Sum`, `Yearly Mean`).
+
+The dashboard includes an optional `event_name` filter and uses query variables backed by the new `/variable` endpoint.
 
 ## License
 
