@@ -6,6 +6,153 @@ export class DataSyncService {
   private syncTask: ScheduledTask | null = null;
   private isSyncing = false;
 
+  private async syncGroupMemberships(meetingFrom?: string, meetingTo?: string) {
+    console.log("Fetching group membership data...");
+    const { groups, rolesByGroup, membersByGroup, meetingsByGroup, failedGroupIds } =
+      await ctClient.getAllGroupMembershipData(meetingFrom, meetingTo);
+
+    console.log(`Syncing ${groups.length} groups...`);
+
+    const failedGroupIdSet = new Set(failedGroupIds);
+    let syncedGroups = 0;
+    let syncedMemberships = 0;
+    let syncedMeetings = 0;
+    let syncedAttendanceRows = 0;
+    let skippedMembershipsWithoutPersonId = 0;
+    let skippedAttendancesWithoutPersonId = 0;
+
+    for (const group of groups) {
+      database.upsertGroup({
+        id: group.id,
+        name: group.name,
+        group_type_id: group.information?.groupTypeId,
+        group_status_id: group.information?.groupStatusId,
+      });
+
+      if (failedGroupIdSet.has(group.id)) {
+        continue;
+      }
+
+      const roles = rolesByGroup.get(group.id) || [];
+      database.replaceGroupRoles(
+        group.id,
+        roles.map((role) => ({
+          id: role.id,
+          group_id: group.id,
+          group_type_role_id: role.groupTypeRoleId,
+          name: role.name,
+          name_translated: role.nameTranslated,
+          is_leader: role.isLeader,
+          sort_key: role.sortKey,
+        }))
+      );
+
+      const members = membersByGroup.get(group.id) || [];
+      const normalizedMemberships = members
+        .map((member) => {
+          const personId = member.person?.id || member.personId;
+          if (!personId) {
+            skippedMembershipsWithoutPersonId += 1;
+            return null;
+          }
+
+          return {
+            group_id: group.id,
+            person_id: personId,
+            person_name: member.person?.title || undefined,
+            group_member_status: member.groupMemberStatus,
+            group_type_role_id: member.groupTypeRoleId,
+            member_start_date: member.memberStartDate || undefined,
+            member_end_date: member.memberEndDate || undefined,
+            registered_by: member.registeredBy || undefined,
+          };
+        })
+        .filter((member): member is NonNullable<typeof member> => member !== null);
+
+      database.replaceGroupMemberships(
+        group.id,
+        normalizedMemberships
+      );
+
+      const meetings = meetingsByGroup.get(group.id) || [];
+      const normalizedMeetings = meetings
+        .map((meeting) => {
+          if (!meeting.id || !meeting.startDate) {
+            return null;
+          }
+
+          return {
+            id: meeting.id,
+            group_id: group.id,
+            start_date: meeting.startDate,
+            end_date: meeting.endDate || undefined,
+            is_canceled: meeting.isCanceled,
+            is_completed: meeting.isCompleted,
+          };
+        })
+        .filter((meeting): meeting is NonNullable<typeof meeting> => meeting !== null);
+
+      const knownMeetingIds = new Set(normalizedMeetings.map((meeting) => meeting.id));
+      const normalizedAttendances = meetings.flatMap((meeting) => {
+        if (!meeting.id || !knownMeetingIds.has(meeting.id)) {
+          return [];
+        }
+
+        return Object.entries(meeting.attendances || {}).flatMap(
+          ([personIdValue, attendanceStatus]) => {
+            const personId = Number(personIdValue);
+            if (!Number.isFinite(personId)) {
+              skippedAttendancesWithoutPersonId += 1;
+              return [];
+            }
+
+            return [
+              {
+                meeting_id: meeting.id,
+                group_id: group.id,
+                person_id: personId,
+                attendance_status: attendanceStatus,
+              },
+            ];
+          }
+        );
+      });
+
+      database.replaceGroupMeetingsAndAttendances(
+        group.id,
+        normalizedMeetings,
+        normalizedAttendances
+      );
+
+      syncedGroups += 1;
+      syncedMemberships += normalizedMemberships.length;
+      syncedMeetings += normalizedMeetings.length;
+      syncedAttendanceRows += normalizedAttendances.length;
+    }
+
+    if (failedGroupIds.length > 0) {
+      console.warn(
+        `Skipped membership updates for ${failedGroupIds.length} groups due to API errors`
+      );
+    }
+
+    if (skippedMembershipsWithoutPersonId > 0) {
+      console.warn(
+        `Skipped ${skippedMembershipsWithoutPersonId} memberships without person identifiers`
+      );
+    }
+
+    if (skippedAttendancesWithoutPersonId > 0) {
+      console.warn(
+        `Skipped ${skippedAttendancesWithoutPersonId} attendance rows with invalid person identifiers`
+      );
+    }
+
+    console.log(
+      `Group data sync complete: ${syncedGroups} groups, ${syncedMemberships} memberships, ${syncedMeetings} meetings, ${syncedAttendanceRows} attendance rows`
+    );
+  }
+
   async syncData() {
     if (this.isSyncing) {
       console.log("Sync already in progress, skipping...");
@@ -42,6 +189,8 @@ export class DataSyncService {
 
       const from = previousMonth.toISOString().split("T")[0];
       const to = nextMonth.toISOString().split("T")[0];
+      const groupMeetingFrom = `${now.getFullYear() - 1}-01-01`;
+      const groupMeetingTo = `${now.getFullYear() + 1}-12-31`;
 
       console.log(`Fetching events and facts from ${from} to ${to}...`);
       const { events, allFacts } = await ctClient.getAllFactsForDateRange(
@@ -76,6 +225,8 @@ export class DataSyncService {
           event_name: event?.name,
         });
       }
+
+      await this.syncGroupMemberships(groupMeetingFrom, groupMeetingTo);
 
       const lastSync = database.getLastSyncTime();
       console.log(`Data sync completed successfully at ${lastSync}`);
@@ -147,6 +298,8 @@ export class DataSyncService {
           event_name: event?.name,
         });
       }
+
+      await this.syncGroupMemberships(`${year}-01-01`, `${year}-12-31`);
 
       const lastSync = database.getLastSyncTime();
       console.log(`Year ${year} sync completed successfully at ${lastSync}`);

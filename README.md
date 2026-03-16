@@ -61,7 +61,7 @@ bun run dev
 
 - `GET /health` - Health check and authentication status
 - `POST /metrics` - Grafana datasource metrics discovery
-- `POST /variable` - Grafana query variable options (`metrics_*`, `event_names`)
+- `POST /variable` - Grafana query variable options (`metrics_*`, `event_names`, `calendar_ids`, `facts`, `groups`, `group_member_types`, `group_member_statuses`, `group_meeting_people`, `group_meeting_attendance_statuses`)
 - `POST /query` - Grafana datasource query endpoint
 - `POST /sync` - Manual data synchronization trigger
 - `POST /sync-year/:year` - Sync specific year data
@@ -81,6 +81,34 @@ Add as a JSON datasource in Grafana:
 4. Pick metrics from the dashboard dropdowns (`Raw`, `Monthly`, `Yearly Sum`, `Yearly Mean`).
 
 The dashboard includes an optional `event_name` filter and uses query variables backed by the new `/variable` endpoint.
+
+### Import Advanced Analytics Dashboard
+
+1. Open Grafana and go to **Dashboards → Import**.
+2. Upload `grafana/ct-facts-analytics-dashboard.json`.
+3. Select your `ct-facts` datasource when prompted.
+4. Choose a base `Fact`, optional `Event`/`Calendar` filters, and an optional denominator fact for the ratio panel.
+
+This dashboard includes rolling averages, YTD, YoY cards, time-shift comparison, ratio metrics, anomaly bands, event/calendar segmentation, completeness, distribution stats, and top/bottom event tables.
+
+### Import Group Membership Dashboard
+
+1. Open Grafana and go to **Dashboards → Import**.
+2. Upload `grafana/ct-group-memberships-dashboard.json`.
+3. Select your `ct-facts` datasource when prompted.
+4. Select one or multiple groups (for example `Freizeit 2025` and `Freizeit 2026`) and compare yearly/monthly membership starts by member type.
+
+This dashboard is based on ChurchTools group memberships (`/groups/{groupId}/members`) and uses `memberStartDate` as the time axis.
+The `Group Member Types` variable is scoped to the currently selected groups, and the comparison table includes `Previous Year`, `YoY Delta`, and `YoY %` columns for side-by-side yearly comparisons.
+
+### Import Group Meeting Attendance Dashboard
+
+1. Open Grafana and go to **Dashboards → Import**.
+2. Upload `grafana/ct-group-meeting-attendance-dashboard.json`.
+3. Select your `ct-facts` datasource when prompted.
+4. Select groups and people to analyze attendance trends over time.
+
+This dashboard is based on ChurchTools group meetings (`/groups/{groupId}/meetings?include=attendances`) and provides monthly present counts, monthly/yearly attendance rate by person, and a per-person summary table.
 
 ## License
 
