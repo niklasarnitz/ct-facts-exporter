@@ -1,33 +1,15 @@
-FROM oven/bun:1 as base
+# syntax=docker/dockerfile:1
+# Production image (replaces Coolify's nixpacks build): Bun 1.3 runs src/index.ts directly on port 3000.
+# Built by .github/workflows/image.yml and deployed by Komodo from niklasarnitz/ops (stacks/ct-facts-exporter).
+# src/db.ts opens data.db in the working directory, so the working directory is /data (a volume); the app
+# itself lives in /app. CT_BASE_URL and CT_LOGIN_TOKEN come from the stack's environment at runtime.
+FROM oven/bun:1.3.0
 WORKDIR /app
-
-# Install dependencies into temp directory
-# This will cache them and speed up future builds
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lockb /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
-
-# Install with --production (exclude devDependencies)
-RUN mkdir -p /temp/prod
-COPY package.json bun.lockb /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
-
-# Copy node_modules from temp directory
-# Then copy all (non-ignored) project files into the image
-FROM base AS prerelease
-COPY --from=install /temp/dev/node_modules node_modules
-COPY . .
-
-# Copy production dependencies and source code into final image
-FROM base AS release
-COPY --from=install /temp/prod/node_modules node_modules
-COPY --from=prerelease /app/src ./src
-COPY --from=prerelease /app/package.json .
-
-# Expose port
+COPY package.json bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --production
+COPY tsconfig.json ./
+COPY src ./src
+WORKDIR /data
+ENV NODE_ENV=production PORT=3000
 EXPOSE 3000
-
-# Run the app
-USER bun
-CMD ["bun", "run", "start"]
+CMD ["bun", "/app/src/index.ts"]
